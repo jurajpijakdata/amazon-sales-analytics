@@ -1,6 +1,7 @@
 import os
 import sys
 import pandas as pd
+import pandera.pandas as pa
 from pathlib import Path
 from decimal import Decimal, InvalidOperation
 from sqlalchemy import create_engine
@@ -8,30 +9,38 @@ from dotenv import load_dotenv
 
 print("🚀 Starting UpDataLogic Amazon Database Ingestion Pipeline (Production Blueprint)...")
 
-# Initialize isolated local configuration environment lookups
-load_dotenv(override=True)
-
-# =====================================================================
-# CONFIGURATION & CONNECTIONS (Dynamic Gateway Sourcing)
-# =====================================================================
 BASE_DIR = Path(__file__).resolve().parent
 DATA_FILE = BASE_DIR / "Amazon_sales_sample.csv"
+ENV_FILE = BASE_DIR / ".env"
 
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_HOST = os.getenv("DB_HOST")
-DB_PORT = os.getenv("DB_PORT", "6543") # Pre-configured for connection pooler layers
-DB_NAME = os.getenv("DB_NAME")
+# 1. Define Strict Data Quality Shield using Pandera
+amazon_ingest_schema = pa.DataFrameSchema({
+    "Order ID": pa.Column(str, nullable=False),
+    "Status": pa.Column(str, nullable=False),
+    "Qty": pa.Column(int, pa.Check.ge(0), nullable=False),
+    "Amount": pa.Column(float, nullable=True)
+})
 
-# Multi-Mode Sandbox Selection Strategy
+# STRICT FILE-BASED SANDBOX LAYER (Bypasses stubborn Windows System Cache indices)
+if ENV_FILE.exists():
+    load_dotenv(dotenv_path=ENV_FILE, override=True)
+    DB_USER = os.getenv("DB_USER")
+    DB_PASSWORD = os.getenv("DB_PASSWORD")
+    DB_HOST = os.getenv("DB_HOST")
+    DB_PORT = os.getenv("DB_PORT", "6543")
+    DB_NAME = os.getenv("DB_NAME")
+else:
+    DB_USER = DB_PASSWORD = DB_HOST = DB_NAME = None
+    DB_PORT = "6543"
+
 if not all([DB_USER, DB_PASSWORD, DB_HOST, DB_NAME]):
     print("\n💡 PORTFOLIO NOTE: Operational pipeline running in BLUEPRINT/TEMPLATE mode.")
     print("To execute this ingestion actively on live storage, populate your secure local '.env' targets.")
     print("Pipeline execution completed safely as an architecture proof-of-concept for target clients.\n")
     sys.exit(0)
 
-# Build infrastructure connection string parameters
-DB_URL = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+connection_string = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+engine = create_engine(connection_string)
 
 # =====================================================================
 # ETL INGESTION STAGE
@@ -41,44 +50,28 @@ try:
         raise FileNotFoundError(f"Extraction halted. Source dataset missing at: {DATA_FILE}")
 
     print(f"📥 1. Extracting raw records from: {DATA_FILE.name}...")
-    df = pd.read_csv(DATA_FILE, low_memory=False)
+    df = pd.read_csv(DATA_FILE, dtype={"Order ID": str}, low_memory=False)
     
     print("⏳ 2. Executing pre-load data type normalization pipeline...")
-    all_metrics = ['Amount', 'Qty']
+    df['Qty'] = pd.to_numeric(df['Qty'], errors='coerce').fillna(0).astype(int)
     
-    def strict_numeric_normalizer(value):
-        if pd.isna(value) or str(value).strip() == '':
-            return None
-        clean_str = str(value).strip().replace(',', '.')
-        try:
-            return float(Decimal(clean_str).quantize(Decimal("0.01")))
-        except InvalidOperation:
-            return None
-
-    def strict_qty_normalizer(value):
-        if pd.isna(value) or str(value).strip() == '':
-            return None
-        try:
-            return int(float(str(value).strip()))
-        except (ValueError, TypeError):
-            return None
-
-    # Protect downstream averages by avoiding raw array zero-interpolations (.fillna)
-    df['Amount'] = df['Amount'].apply(strict_numeric_normalizer)
-    df['Qty'] = df['Qty'].apply(strict_qty_normalizer)
+    # SENIORSKÁ OPRAVA: Odstránenie tisíckových čiarok z textu pred číselnou konverziou
+    df['Amount'] = df['Amount'].astype(str).str.replace(',', '', regex=False)
+    df['Amount'] = pd.to_numeric(df['Amount'], errors='coerce')
     
-    # Map explicit structure validation tracking vectors
-    df['data_quality_status'] = df[['Amount', 'Qty']].isnull().any(axis=1).map({True: 'UNKNOWN', False: 'CLEAN'})
+    print("🛡️ 3. Running declarative data quality checks via Pandera schema evaluation...")
+    validated_df = amazon_ingest_schema.validate(df)
     
-    print("🔌 3. Establishing connection to the remote PostgreSQL cluster...")
-    engine = create_engine(DB_URL)
+    validated_df['data_quality_status'] = validated_df[['Amount', 'Qty']].isnull().any(axis=1).map({True: 'UNKNOWN', False: 'CLEAN'})
     
-    print(f"📤 4. Stream loading {len(df):,} records into database target ['public.amazon_sales_raw']...")
-    # Stream data chunks to defend remote target server memory thresholds
-    df.to_sql('amazon_sales_raw', engine, schema='public', if_exists='replace', index=False, chunksize=10000)
+    print(f"📤 4. Stream loading {len(validated_df):,} validated records into database layer...")
+    validated_df.to_sql('amazon_sales_raw', engine, schema='public', if_exists='replace', index=False)
     
     print("\n=== 🎉 PIPELINE SUCCESS: ALL DATA PROVISIONED TO POSTGRESQL CLUSTER ===")
 
+except pa.errors.SchemaError as schema_fault:
+    print(f"\n❌ DATA QUALITY BREACH DETECTED BY PANDERA:\n{schema_fault}", file=sys.stderr)
+    sys.exit(1)
 except Exception as e:
     print(f"\n❌ PIPELINE CRITICAL FAILURE: {e}", file=sys.stderr)
     sys.exit(1)

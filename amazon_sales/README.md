@@ -1,9 +1,17 @@
 # 📊 Amazon Sales & Revenue Performance Analytics Pipeline
 
-A self-directed data engineering and business intelligence project demonstrating end-to-end data transformation, automated database modeling, and high-precision financial reporting. This project executes a robust Python and SQL pipeline over a large-scale e-commerce dataset containing **128,975 transactional records**, systematically uncovering **₹8.1 Million in hidden losses** due to cancellations and product returns.
+A self-directed data engineering and portfolio framework modeling high-scale transactional payloads based on global Amazon Seller Central streams. This project executes a robust Python and SQL pipeline over a large-scale e-commerce dataset containing **128,975 transactional records**, systematically uncovering **₹8.1 Million in hidden losses** due to cancellations and product returns.
 
 ## 🚀 Interactive Dashboard Preview
 ![Amazon Sales Dashboard](dashboard_preview.gif)
+
+---
+
+## 🏗️ Architecture Design: Self-Healing & Automated Verification Layout
+To maximize repository reliability and data product safety across enterprise e-commerce tracking networks, the framework deploys a strict multi-layered engineering and validation layout:
+1. **Self-Healing Pre-Load Layer:** Automatically coerces incoming data structure alignments (e.g., preventing schema drift by casting Order IDs to clean strings) and strips alphanumeric grouping formatting or currency markers before numeric conversion.
+2. **Automated Unit Testing (`pytest`):** Core transformation algorithms are fully decoupled into pure isolated functions, verified against table-driven test vectors, edge-case currency parameters, and structural data noise inputs.
+3. **Declarative Schema Validation (`pandera`):** The data ingestion pipeline is armed with a strict semantic quality schema layer. It screens records for missing attributes (`Null`), duplicate flags, boundary ranges, and structural typing variations before writing records downstream.
 
 ---
 
@@ -24,37 +32,50 @@ By deploying high-precision numeric types and strict data quality boundaries, th
 
 ---
 
-## 🛠️ Tech Stack & Pipeline Architecture
-- **Data Engineering:** Python (Pandas) executing high-precision numeric vectoring via `decimal.Decimal` to eliminate fractional binary float drifting (`://30000000000000004.com`). Loose zero-interpolation methods (`.fillna(0)`) have been entirely deprecated to protect the mathematical and accounting validity of gross and net metrics.
-- **Data Quality Isolation (Regex Shield):** Implements an explicit character parsing grammar (`^-?\\d+(?:\\.\\d+)?$`) to intercept malformed alphanumeric payloads and formatting anomalies, isolating them cleanly into a detached metadata bucket (`data_quality_status = 'UNKNOWN'`).
-- **Database Architecture:** PostgreSQL (SQLAlchemy + `psycopg2-binary`) deploying optimized bulk block write configurations (`chunksize=10000`) and secure Connection Pooler layers (Port `6543`).
+## 🛠️ Tech Stack & Pipeline Configurations
+- **Data Engineering:** Python (Pandas) executing an inline self-healing text cleanup matrix and strict type formatting via `pandera.pandas`. High-precision accounting aggregates utilize `decimal.Decimal` logic to completely eliminate binary float drifting. Loose zero-interpolations (`.fillna(0)`) are entirely deprecated.
+- **Testing Suite:** `pytest` executing parametrized, table-driven unit tests to simulate and intercept raw input anomalies.
+- **Database Architecture:** PostgreSQL (SQLAlchemy + `psycopg2-binary`) deploying optimized bulk block write configurations (`chunksize=10000`) and secure Connection Pooler layers (Port `6543`), featuring automated local file backup routing.
 - **BI Visualization:** Power BI Desktop configured with custom localization schemas for the Indian Rupee (`₹`) financial system, optimized for flawless metric aggregations (`SUM()` and `AVERAGE()`).
 
 ---
 
-## 📁 Repository Structure
-* `amazon_analytics.py`: Main financial calculation engine processing local data extractions, handling negative sign refund vectors, isolating clean cash flows, and validating gross vs. net revenue metrics.
-* `amazon_ingestion.py`: Dual-Mode Relational Ingestion Blueprint. Runs out-of-the-box as an architectural proof-of-concept for target clients, while actively converting into an online cloud stream loader upon secure `.env` connection pooler target mapping.
-* `.gitignore`: Built-in production hygiene shield blocking temporary systemic directories and private parameter environments from public disclosure.
-* `requirements.txt`: Locked software dependency versions ensuring 100% reproducible execution parameters across external infrastructures.
+## 📁 Repository Directory Structure
+
+```text
+amazon-sales-analytics/
+└── amazon_sales/
+    ├── Amazon_sales_sample.csv            # Custom Ingestion Sample Dataset
+    ├── amazon_analytics.py                # Main Core Analytics Engine & Pandera Shield Verification
+    ├── amazon_ingestion.py                # Relational Storage Ingestion Stream Blueprint
+    ├── test_amazon.py                     # Automated Pytest Suite & Code Crash Simulator
+    ├── requirements.txt                   # Locked Software Dependency Layout
+    └── README.md                          # Enterprise Systems Documentation
+```
 
 ---
 
 ## 🚀 Quick Start (Clone & Run Standard)
 
 ### 1. Replicate Local Dependencies
-Deploy the isolated software version scheme inside your internal environment:
+Deploy the isolated software version scheme inside your local execution environment:
 ```powershell
 pip install -r requirements.txt
 ```
 
-### 2. Run the Local Financial Validation Audit
+### 2. Execute Automated Code Testing
+Run the complete unit testing suite using the built-in crash-test vectors to verify validation stability:
+```powershell
+pytest test_amazon.py -v
+```
+
+### 3. Run the Local Financial Validation Audit
 To verify the analytical layer using the pre-packaged sample data pool, execute:
 ```powershell
 python amazon_analytics.py
 ```
 
-### 3. Inspect the Ingestion Architecture Blueprint
+### 4. Inspect the Ingestion Architecture Blueprint
 Test the dual-mode framework pipeline to inspect database ingestion scalability configurations:
 ```powershell
 python amazon_ingestion.py

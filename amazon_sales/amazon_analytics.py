@@ -1,54 +1,77 @@
+import os
 import sys
+import re
 import pandas as pd
 from pathlib import Path
+from decimal import Decimal, InvalidOperation
 
-print("🚀 Starting UpDataLogic Amazon Sales Analytics Engine...")
+print("🚀 Starting UpDataLogic Amazon Sales Analytics Engine (Enhanced Financial Integrity)...")
 
 # =====================================================================
-# DYNAMIC PATH RESOLUTION (UpDataLogic Rule 2)
+# DYNAMIC PATH RESOLUTION (Cross-Platform Execution Compatibility)
 # =====================================================================
-# Automatically locate the directory where this script is executed
 BASE_DIR = Path(__file__).resolve().parent
-
-# Dynamically build the path to target the correct folder and casing
-DATA_FILE = BASE_DIR / "Amazon_sales.csv"
+DATA_FILE = BASE_DIR / "Amazon_sales_sample.csv"
 
 # =====================================================================
 # DATA PIPELINE EXECUTION
 # =====================================================================
 try:
-    # Fail fast if the required dataset is missing from the environment
     if not DATA_FILE.exists():
         raise FileNotFoundError(f"Critical data resource not found at expected location: {DATA_FILE}")
         
     print(f"📥 Loading dataset: {DATA_FILE.name}...")
     df = pd.read_csv(DATA_FILE, low_memory=False)
     
-    # 1. Clean the financial metrics
-    df['Amount'] = pd.to_numeric(df['Amount'], errors='coerce').fillna(0)
+    print("\n⏳ Executing strict Amazon financial parsing pipeline...")
     
-    # 2. Inspect order taxonomy
+    # High-precision token parser to completely eliminate binary float drifting
+    def clean_amazon_amount(value):
+        if pd.isna(value) or str(value).strip() == '':
+            return None # Missing monetary values map purely to clean NULL states
+            
+        price_str = str(value).strip().replace(',', '.')
+        price_str = price_str.replace('$', '').replace('€', '').strip()
+        
+        # Regular expression validation to secure formatting patterns
+        match = re.match(r"^-?\d+(?:\.\d+)?$", price_str)
+        if not match:
+            return None
+            
+        try:
+            return Decimal(price_str)
+        except InvalidOperation:
+            return None
+
+    # Cast metrics into strict high-precision Decimal objects
+    df['Amount_Decimal'] = df['Amount'].apply(clean_amazon_amount)
+    
+    # Decouple quality metrics from primary measure vectors to preserve data types
+    df['data_quality_status'] = df['Amount_Decimal'].apply(lambda x: 'CLEAN' if x is not None else 'UNKNOWN')
+    
     print("\n=== UNIQUE ORDER STATUSES IN DATASET ===")
     print(df['Status'].unique())
     
-    # 3. Financial Performance Audit
-    print("\n=== GROSS VS NET REVENUE ANALYSIS ===")
-    gross_revenue = df['Amount'].sum()
-    print(f"Total Gross Revenue: {gross_revenue:,.2f}")
+    print("\n=== GROSS VS NET REVENUE ANALYSIS (FINANCIAL AUDIT COMPLIANT) ===")
     
-    # Filter out compromised transaction statuses to isolate clean cash flow
+    # Isolate valid verified data points for auditing aggregates
+    clean_numeric_df = df[df['data_quality_status'] == 'CLEAN']
+    
+    gross_revenue = sum(clean_numeric_df['Amount_Decimal'])
+    print(f"Total Gross Revenue: {float(gross_revenue):,.2f} EUR")
+    
+    # Filter out reversed and unfulfilled transaction logs to isolate core cash flow
     invalid_statuses = ['Cancelled', 'Shipped - Returned to Seller', 'Returned']
-    clean_df = df[~df['Status'].isin(invalid_statuses)]
+    clean_cashflow_df = clean_numeric_df[~clean_numeric_df['Status'].isin(invalid_statuses)]
     
-    net_revenue = clean_df['Amount'].sum()
-    print(f"Total Net Revenue (Clean): {net_revenue:,.2f}")
+    net_revenue = sum(clean_cashflow_df['Amount_Decimal'])
+    print(f"Total Net Revenue (Clean): {float(net_revenue):,.2f} EUR")
     
-    # Quantify revenue leak due to logistics cancellations
+    # Calculate revenue leak intervals across logistical returns
     revenue_lost = gross_revenue - net_revenue
-    print(f"Total Revenue Lost Due to Cancellations/Returns: {revenue_lost:,.2f}")
+    print(f"Total Revenue Lost Due to Cancellations/Returns: {float(revenue_lost):,.2f} EUR")
     print("\n🏆 ANALYTICS RUN COMPLETED SUCCESSFULLY.")
 
 except Exception as e:
-    # HARD FAILURE SIGNALING (UpDataLogic Rule 3)
     print(f"\n❌ PIPELINE CRITICAL FAILURE: {e}", file=sys.stderr)
     sys.exit(1)

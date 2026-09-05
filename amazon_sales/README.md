@@ -7,11 +7,14 @@ A self-directed data engineering and portfolio framework modeling high-scale tra
 
 ---
 
-## 🏗️ Architecture Design: Self-Healing & Automated Verification Layout
-To maximize repository reliability and data product safety across enterprise e-commerce tracking networks, the framework deploys a strict multi-layered engineering and validation layout:
-1. **Self-Healing Pre-Load Layer:** Automatically coerces incoming data structure alignments (e.g., preventing schema drift by casting Order IDs to clean strings) and strips alphanumeric grouping formatting or currency markers before numeric conversion.
-2. **Automated Unit Testing (`pytest`):** Core transformation algorithms are fully decoupled into pure isolated functions, verified against table-driven test vectors, edge-case currency parameters, and structural data noise inputs.
-3. **Declarative Schema Validation (`pandera`):** The data ingestion pipeline is armed with a strict semantic quality schema layer. It screens records for missing attributes (`Null`), duplicate flags, boundary ranges, and structural typing variations before writing records downstream.
+## 🏗️ Architecture Design: Enterprise Observability & Self-Healing Layout
+To meet the rigorous data quality, error boundaries, and monitoring standards required in production-grade e-commerce infrastructure, the framework deploys a strict multi-layered verification and monitoring architecture:
+1. **Enterprise Logging Framework (`logging`):** Completely replaced legacy, unmonitored standard stdout text prints with a formal Python logging machine. Events, environment shifts, and connection faults are systematically tracked across precise execution states (`INFO`, `WARNING`, `CRITICAL`) to allow direct parsing by automated cloud orchestrators.
+2. **First-Class Rejection Metrics & Quarantine:** Malformed textual data corruptions or alphanumeric anomalies are proactively intercepted row-by-row. Instead of masking failures using silent zero conversions that skew corporate averages downstream, corrupt fields are cast to explicit `NULL` maps and actively tracked as a first-class operational quality metric.
+3. **Automated Alerting Thresholds (Fail-Fast):** Incorporates an active runtime processing limit constraint. If the e-commerce data ingestion pipeline encounters a critical row rejection rate greater than **5.0%** of the batch payload volume, the entire framework halts execution immediately and throws a hard termination state (`sys.exit(1)`) to trigger scheduler alerts.
+4. **Self-Healing Pre-Load Layer:** Coerces incoming data structure alignments (e.g., preventing schema drift by casting Order IDs to clean strings) and strips alphanumeric grouping formatting or currency markers before numeric conversion.
+5. **Decoupled Unit Testing (`pytest`):** Core transformation math and financial logic are fully decoupled into an independent logic module (`amazon_parser.py`) to eliminate environmental connection dependencies, allowing rapid parameterized testing execution.
+6. **Declarative Schema Validation (`pandera`):** Screens the fully aligned, cleaned, and healed dataframe for structural attributes, duplicate keys, and range constraints before allowing downstream relational loading.
 
 ---
 
@@ -33,7 +36,7 @@ By deploying high-precision numeric types and strict data quality boundaries, th
 ---
 
 ## 🛠️ Tech Stack & Pipeline Configurations
-- **Data Engineering:** Python (Pandas) executing an inline self-healing text cleanup matrix and strict type formatting via `pandera.pandas`. High-precision accounting aggregates utilize `decimal.Decimal` logic to completely eliminate binary float drifting. Loose zero-interpolations (`.fillna(0)`) are entirely deprecated.
+- **Data Engineering:** Python (Pandas) executing an inline self-healing text cleanup matrix, robust `logging` stream handlers, and strict type formatting via `pandera.pandas`. High-precision accounting aggregates utilize `decimal.Decimal` logic to completely eliminate binary float drifting. Loose zero-interpolations (`.fillna(0)`) are entirely deprecated.
 - **Testing Suite:** `pytest` executing parametrized, table-driven unit tests to simulate and intercept raw input anomalies.
 - **Database Architecture:** PostgreSQL (SQLAlchemy + `psycopg2-binary`) deploying optimized bulk block write configurations (`chunksize=10000`) and secure Connection Pooler layers (Port `6543`), featuring automated local file backup routing.
 - **BI Visualization:** Power BI Desktop configured with custom localization schemas for the Indian Rupee (`₹`) financial system, optimized for flawless metric aggregations (`SUM()` and `AVERAGE()`).
@@ -46,10 +49,11 @@ By deploying high-precision numeric types and strict data quality boundaries, th
 amazon-sales-analytics/
 └── amazon_sales/
     ├── Amazon_sales_sample.csv            # Custom Ingestion Sample Dataset
-    ├── amazon_analytics.py                # Main Core Analytics Engine & Pandera Shield Verification
-    ├── amazon_ingestion.py                # Relational Storage Ingestion Stream Blueprint
-    ├── test_amazon.py                     # Automated Pytest Suite & Code Crash Simulator
-    ├── requirements.txt                   # Locked Software Dependency Layout
+    ├── amazon_parser.py                   # Pure Decoupled Parsing & Business Logic (100% Testable)
+    ├── amazon_analytics.py                # Main Core Analytics Engine & Production Logging Handlers
+    ├── amazon_ingestion.py                # Relational Storage Ingestion Stream with Logging Blueprint
+    ├── test_amazon.py                     # Parametrized Pytest Suite & Code Crash Simulator
+    ├── requirements.txt                   # Locked Software Dependency Layout Matrix
     └── README.md                          # Enterprise Systems Documentation
 ```
 

@@ -1,34 +1,7 @@
 import pytest
-import pandas as pd
-from decimal import Decimal, InvalidOperation
-
-# =====================================================================
-# 1. PURE TRANSFORM FUNCTIONS (Extracted for Verification)
-# =====================================================================
-def clean_amazon_monetary_vector(value):
-    """Safely normalizes and validates e-commerce transaction strings into Decimals."""
-    if pd.isna(value) or str(value).strip() == '':
-        return None
-        
-    price_str = str(value).strip()
-    
-    # Handling financial grouping and symbols automatically
-    if ',' in price_str and '.' in price_str:
-        price_str = price_str.replace(',', '')
-    elif ',' in price_str and '.' not in price_str:
-        price_str = price_str.replace(',', '.')
-        
-    price_str = price_str.replace('$', '').replace('€', '').strip()
-    
-    try:
-        return Decimal(price_str)
-    except InvalidOperation:
-        raise ValueError(f"Financial string conversion failure for value: {value}")
-
-
-# =====================================================================
-# 2. PYTEST TRANSACTIONS SIMULATION (Module 5 Test suite)
-# =====================================================================
+from decimal import Decimal
+# Import the actual pure production logic module to avoid duplicates
+from amazon_parser import self_heal_amazon_amount
 
 @pytest.mark.parametrize("input_val, expected_output", [
     ("58,910.79", Decimal("58910.79")),
@@ -38,10 +11,9 @@ def clean_amazon_monetary_vector(value):
 ])
 def test_clean_amazon_monetary_vector_valid_cases(input_val, expected_output):
     """Verifies strip formatting and financial grouping symbol extraction."""
-    assert clean_amazon_monetary_vector(input_val) == expected_output
+    assert self_heal_amazon_amount(input_val) == expected_output
 
 
 def test_clean_amazon_monetary_vector_catches_syntax_faults():
-    """Verifies that unparseable text payloads inside revenue metrics force hard exit code conditions."""
-    with pytest.raises(ValueError, match="Financial string conversion failure for value"):
-        clean_amazon_monetary_vector("CORRUPTED_MONEY_TOKEN")
+    """Verifies that unparseable text payloads return None safely for tracking metrics."""
+    assert self_heal_amazon_amount("CORRUPTED_MONEY_TOKEN") is None

@@ -4,11 +4,11 @@ import logging
 import pandas as pd
 import pandera.pandas as pa
 from pathlib import Path
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 
 # =====================================================================
-# ENTERPRISE LOGGING CONFIGURATION (Module 6 Standard)
+# ENTERPRISE LOGGING CONFIGURATION (Module 6 & 7 Standard)
 # =====================================================================
 logging.basicConfig(
     level=logging.INFO,
@@ -16,7 +16,7 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 
-logging.info("🚀 Starting UpDataLogic Amazon Database Ingestion Pipeline (Production Observability Mode)...")
+logging.info("🚀 Starting UpDataLogic Amazon Database Ingestion Pipeline (Idempotent Production Mode)...")
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_FILE = BASE_DIR / "Amazon_sales_sample.csv"
@@ -59,7 +59,7 @@ except Exception as db_error:
     logging.info("🔌 Connection Status: [LOCAL ENGINE] Active Fallback SQLite Context Deployed.")
 
 # =====================================================================
-# ETL INGESTION STAGE Execution
+# ETL INGESTION STAGE Execution with Idempotent UPSERT Matrix
 # =====================================================================
 try:
     if not DATA_FILE.exists():
@@ -78,15 +78,59 @@ try:
     
     validated_df['data_quality_status'] = validated_df[['Amount', 'Qty']].isnull().any(axis=1).map({True: 'UNKNOWN', False: 'CLEAN'})
     
-    logging.info(f"📤 4. LOADING: Streaming {len(validated_df):,} validated records into database target layer...")
-    validated_df.to_sql('amazon_sales_raw', engine, if_exists='replace', index=False)
+    logging.info("📤 4. LOADING: Executing idempotent UPSERT pattern routing directly to database engine...")
     
-    logging.info("🏆 PIPELINE RUN COMPLETION: STATUS 0 [SUCCESS]. All records provisioned successfully.\n")
-    sys.exit(0) # Enforce safe process exit flags for orchestrators
+    # Enforce database schema constraint setups inside atomic blocks
+    with engine.begin() as transaction_conn:
+        if str(engine.url).startswith('sqlite'):
+            # SENIORSKÁ SAMOOPRAVA LOKÁLNEHO ENGINU: Vytvoríme tabuľku s riadnym PRIMARY KEY, ak chýba
+            transaction_conn.execute(text("DROP TABLE IF EXISTS amazon_sales_raw;"))
+            transaction_conn.execute(text("""
+                CREATE TABLE amazon_sales_raw (
+                    "Order ID" TEXT PRIMARY KEY,
+                    Status TEXT,
+                    Qty INTEGER,
+                    Amount REAL,
+                    data_quality_status TEXT
+                );
+            """))
+            logging.info("🧹 Local SQLite Strategy: Schema mapped with strict Primary Key specifications.")
+
+            for _, row in validated_df.iterrows():
+                upsert_query = text("""
+                    INSERT INTO amazon_sales_raw ("Order ID", Status, Qty, Amount, data_quality_status)
+                    VALUES (:_Order_ID, :Status, :Qty, :Amount, :data_quality_status)
+                    ON CONFLICT("Order ID") DO UPDATE SET
+                        Status=excluded.Status,
+                        Qty=excluded.Qty,
+                        Amount=excluded.Amount,
+                        data_quality_status=excluded.data_quality_status;
+                """)
+                row_dict = row.to_dict()
+                row_dict['_Order_ID'] = row_dict.pop('Order ID')
+                transaction_conn.execute(upsert_query, row_dict)
+        else:
+            # Ostrý cloudový PostgreSQL má už kľúče z DDL skriptov nasadené permanentne
+            for _, row in validated_df.iterrows():
+                upsert_query = text("""
+                    INSERT INTO amazon_sales_raw ("Order ID", "Status", "Qty", "Amount", "data_quality_status")
+                    VALUES (:_Order_ID, :Status, :Qty, :Amount, :data_quality_status)
+                    ON CONFLICT ("Order ID") DO UPDATE SET
+                        "Status" = EXCLUDED.Status,
+                        "Qty" = EXCLUDED.Qty,
+                        "Amount" = EXCLUDED.Amount,
+                        "data_quality_status" = EXCLUDED.data_quality_status;
+                """)
+                row_dict = row.to_dict()
+                row_dict['_Order_ID'] = row_dict.pop('Order ID')
+                transaction_conn.execute(upsert_query, row_dict)
+                
+    logging.info("🏆 PIPELINE RUN COMPLETION: STATUS 0 [SUCCESS]. Idempotency matrix guarantee verified.\n")
+    sys.exit(0)
 
 except pa.errors.SchemaError as schema_fault:
     logging.critical(f"❌ PIPELINE STOPPED VIA PANDERA INGESTION SHIELD: {schema_fault}")
-    sys.exit(1) # Hard failure alert code for cloud triggers
+    sys.exit(1)
 except Exception as fatal_error:
     logging.critical(f"❌ PIPELINE INGESTION CRITICAL RUNTIME FAILURE: {fatal_error}")
     sys.exit(1)

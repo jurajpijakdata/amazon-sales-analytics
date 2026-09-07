@@ -16,21 +16,29 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 
-logging.info("🚀 Starting UpDataLogic Amazon Database Ingestion Pipeline (Idempotent Production Mode)...")
+logging.info("🚀 Starting UpDataLogic Marketing Ingestion Layer (Idempotent Production Mode)...")
 
 BASE_DIR = Path(__file__).resolve().parent
-DATA_FILE = BASE_DIR / "Amazon_sales_sample.csv"
+DATA_FILE = BASE_DIR / "data_raw" / "customer_churn_dataset.csv"
 ENV_FILE = BASE_DIR / ".env"
 
-# 1. Define Strict Data Quality Ingestion Shield via Pandera Specification
-amazon_ingest_schema = pa.DataFrameSchema({
-    "Order ID": pa.Column(str, nullable=False),
-    "Status": pa.Column(str, nullable=False),
-    "Qty": pa.Column(int, pa.Check.ge(0), nullable=False),
-    "Amount": pa.Column(float, nullable=True)
+METRICS_TRACKER = {
+    "total_records_extracted": 0,
+    "successfully_healed_records": 0,
+    "rejected_records_critical": 0
+}
+
+# Define Data Quality Shield using Pandera Specification
+marketing_ingest_schema = pa.DataFrameSchema({
+    "CustomerID": pa.Column(str, nullable=False),
+    "CustomerSegment": pa.Column(str, pa.Check.isin(["Basic", "Standard", "Premium"]), nullable=False),
+    "TenureMonths": pa.Column(int, pa.Check.ge(0), nullable=False),
+    "SupportCalls": pa.Column(float, nullable=True),
+    "TotalSpend_USD": pa.Column(float, nullable=True),
+    "ChurnStatus": pa.Column(int, pa.Check.isin([0, 1]), nullable=False)
 })
 
-# 2. Database Connection Check with Dynamic Fallback Context Routing
+# Database Connection Check with Fallback
 try:
     if ENV_FILE.exists():
         load_dotenv(dotenv_path=ENV_FILE, override=True)
@@ -41,7 +49,7 @@ try:
         DB_NAME = os.getenv("DB_NAME")
         
         if not all([DB_USER, DB_PASSWORD, DB_HOST, DB_NAME]):
-            raise ValueError("Incomplete database credentials inside configuration targets.")
+            raise ValueError("Incomplete cloud credentials.")
             
         connection_string = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
         engine = create_engine(connection_string)
@@ -49,11 +57,11 @@ try:
             pass
         logging.info("🔌 Connection Status: [ONLINE] Remote PostgreSQL Warehouse Connected.")
     else:
-        raise FileNotFoundError("Local configurations env targets missing.")
+        raise FileNotFoundError("Config file missing.")
 
 except Exception as db_error:
     logging.warning(f"⚠️ Production DB Offline or Network Issue detected: {db_error}")
-    logging.info("🔄 Activating Portfolio Architecture Fallback Mode (Local Standalone Engine)...")
+    logging.info("🔄 Activating Portfolio Architecture Fallback Mode (Local Storage Engine)...")
     connection_string = f"sqlite:///{BASE_DIR / 'local_portfolio.db'}"
     engine = create_engine(connection_string)
     logging.info("🔌 Connection Status: [LOCAL ENGINE] Active Fallback SQLite Context Deployed.")
@@ -63,71 +71,103 @@ except Exception as db_error:
 # =====================================================================
 try:
     if not DATA_FILE.exists():
-        raise FileNotFoundError(f"Extraction halted. Source dataset missing at: {DATA_FILE}")
+        raise FileNotFoundError(f"Source dataset missing at: {DATA_FILE}")
 
-    logging.info(f"📥 1. EXTRACTION: Reading raw records from target file: {DATA_FILE.name}")
-    df = pd.read_csv(DATA_FILE, dtype={"Order ID": str}, low_memory=False)
+    logging.info(f"📥 1. Extraction: Reading records from: {DATA_FILE.name}...")
+    df = pd.read_csv(DATA_FILE, dtype={"CustomerID": str}, low_memory=False)
     
-    logging.info("⏳ 2. TRANSFORMATION: Executing structural data pre-load alignment matrices...")
-    df['Qty'] = pd.to_numeric(df['Qty'], errors='coerce').fillna(0).astype(int)
-    df['Amount'] = df['Amount'].astype(str).str.replace(',', '', regex=False)
-    df['Amount'] = pd.to_numeric(df['Amount'], errors='coerce')
+    METRICS_TRACKER["total_records_extracted"] = len(df)
     
-    logging.info("🛡️ 3. VALIDATION: Running structural data quality tests via Pandera schema evaluation...")
-    validated_df = amazon_ingest_schema.validate(df)
+    logging.info("⏳ 2. Transformation: Running self-healing normalizers...")
     
-    validated_df['data_quality_status'] = validated_df[['Amount', 'Qty']].isnull().any(axis=1).map({True: 'UNKNOWN', False: 'CLEAN'})
+    def self_heal_support_calls(value, row_idx):
+        if pd.isna(value) or str(value).strip() in ('', 'UNKNOWN'):
+            return None
+        try:
+            return int(float(str(value).strip()))
+        except (ValueError, TypeError):
+            return None
+
+    def clean_numeric_spend(value):
+        if pd.isna(value) or str(value).strip() in ('', 'NaN', 'UNKNOWN'):
+            return None
+        clean_str = str(value).strip().replace(',', '')
+        try:
+            return float(clean_str)
+        except ValueError:
+            return None
+
+    df['SupportCalls'] = [self_heal_support_calls(val, idx) for idx, val in enumerate(df['SupportCalls'])]
+    df['TotalSpend_USD'] = df['TotalSpend_USD'].apply(clean_numeric_spend)
     
+    df['data_quality_status'] = df[['TotalSpend_USD', 'SupportCalls']].isnull().any(axis=1).map({True: 'UNKNOWN', False: 'CLEAN'})
+    
+    METRICS_TRACKER["rejected_records_critical"] = int(df['TotalSpend_USD'].isna().sum())
+    METRICS_TRACKER["successfully_healed_records"] = METRICS_TRACKER["total_records_extracted"] - METRICS_TRACKER["rejected_records_critical"]
+
+    logging.info("🛡️ 3. Validation: Running declarative structural checks via Pandera...")
+    validated_df = marketing_ingest_schema.validate(df)
+    
+    rejection_rate = (METRICS_TRACKER["rejected_records_critical"] / METRICS_TRACKER["total_records_extracted"]) * 100
+    logging.info(f"📊 DATA QUALITY METRICS: Clean: {METRICS_TRACKER['successfully_healed_records']:,} | Rejections: {METRICS_TRACKER['rejected_records_critical']:,} ({rejection_rate:.2f}%)")
+    
+    if rejection_rate > 5.0:
+        raise ValueError(f"Pipeline stopped. Rejection rate {rejection_rate:.2f}% breached 5.0% limit.")
+
     logging.info("📤 4. LOADING: Executing idempotent UPSERT pattern routing directly to database engine...")
     
-    # Enforce database schema constraint setups inside atomic blocks
     with engine.begin() as transaction_conn:
         if str(engine.url).startswith('sqlite'):
-            # SENIORSKÁ ROBUSTNÁ SCHÉMA: Pridávame prísne CHECK doložky chrániace integritu dát priamo v DB
-            transaction_conn.execute(text("DROP TABLE IF EXISTS amazon_sales_raw;"))
+            # PRODUCTION BLUEPRINT: Deploy strict CHECK constraints to enforce database boundaries
+            transaction_conn.execute(text("DROP TABLE IF EXISTS marketing_churn_raw;"))
             transaction_conn.execute(text("""
-                CREATE TABLE amazon_sales_raw (
-                    "Order ID" TEXT PRIMARY KEY,
-                    Status TEXT NOT NULL,
-                    Qty INTEGER NOT NULL CHECK (Qty >= 0),
-                    Amount REAL CHECK (Amount >= 0 OR Amount IS NULL),
+                CREATE TABLE marketing_churn_raw (
+                    CustomerID TEXT PRIMARY KEY,
+                    CustomerSegment TEXT NOT NULL,
+                    AcquisitionChannel TEXT,
+                    TenureMonths INTEGER NOT NULL CHECK (TenureMonths >= 0),
+                    SupportCalls REAL CHECK (SupportCalls >= 0 OR SupportCalls IS NULL),
+                    TotalSpend_USD REAL CHECK (TotalSpend_USD >= 0 OR TotalSpend_USD IS NULL),
+                    ChurnStatus INTEGER NOT NULL CHECK (ChurnStatus IN (0, 1)),
                     data_quality_status TEXT NOT NULL
                 );
             """))
             
-            # PERFORMANCE OPTIMIZATION LAYER: Nasadzujeme indexy pre rýchle analytické sčítavanie tržieb
-            transaction_conn.execute(text('CREATE INDEX IF NOT EXISTS idx_amazon_sales_status ON amazon_sales_raw (Status);'))
-            transaction_conn.execute(text('CREATE INDEX IF NOT EXISTS idx_amazon_sales_quality ON amazon_sales_raw (data_quality_status);'))
-            logging.info("🧹 Local SQLite Strategy: Schema mapped with strict Primary Key, CHECK limits & Analytical Indexes.")
+            # PERFORMANCE OPTIMIZATION LAYER: Deploy B-Tree analytical indexing for high-speed slicer filters
+            transaction_conn.execute(text('CREATE INDEX IF NOT EXISTS idx_marketing_segment ON marketing_churn_raw (CustomerSegment);'))
+            transaction_conn.execute(text('CREATE INDEX IF NOT EXISTS idx_marketing_churn ON marketing_churn_raw (ChurnStatus);'))
+            logging.info("🧹 Local SQLite Strategy: Schema mapped with strict Primary Key, CHECK limits & Analytical B-Tree Indexes.")
 
             for _, row in validated_df.iterrows():
                 upsert_query = text("""
-                    INSERT INTO amazon_sales_raw ("Order ID", Status, Qty, Amount, data_quality_status)
-                    VALUES (:_Order_ID, :Status, :Qty, :Amount, :data_quality_status)
-                    ON CONFLICT("Order ID") DO UPDATE SET
-                        Status=excluded.Status,
-                        Qty=excluded.Qty,
-                        Amount=excluded.Amount,
+                    INSERT INTO marketing_churn_raw (CustomerID, CustomerSegment, AcquisitionChannel, TenureMonths, SupportCalls, TotalSpend_USD, ChurnStatus, data_quality_status)
+                    VALUES (:CustomerID, :CustomerSegment, :AcquisitionChannel, :TenureMonths, :SupportCalls, :TotalSpend_USD, :ChurnStatus, :data_quality_status)
+                    ON CONFLICT(CustomerID) DO UPDATE SET
+                        CustomerSegment=excluded.CustomerSegment,
+                        AcquisitionChannel=excluded.AcquisitionChannel,
+                        TenureMonths=excluded.TenureMonths,
+                        SupportCalls=excluded.SupportCalls,
+                        TotalSpend_USD=excluded.TotalSpend_USD,
+                        ChurnStatus=excluded.ChurnStatus,
                         data_quality_status=excluded.data_quality_status;
                 """)
-                row_dict = row.to_dict()
-                row_dict['_Order_ID'] = row_dict.pop('Order ID')
-                transaction_conn.execute(upsert_query, row_dict)
+                transaction_conn.execute(upsert_query, row.to_dict())
         else:
-            # Ostrý cloudový PostgreSQL má kľúče z DDL architektúry trvalo nasadené
+            # Remote PostgreSQL cloud storage destination fallback execution path
             for _, row in validated_df.iterrows():
                 upsert_query = text("""
-                    INSERT INTO amazon_sales_raw ("Order ID", "Status", "Qty", "Amount", "data_quality_status")
-                    VALUES (:_Order_ID, :Status, :Qty, :Amount, :data_quality_status)
-                    ON CONFLICT ("Order ID") DO UPDATE SET
-                        "Status" = EXCLUDED.Status,
-                        "Qty" = EXCLUDED.Qty,
-                        "Amount" = EXCLUDED.Amount,
+                    INSERT INTO marketing_churn_raw ("CustomerID", "CustomerSegment", "AcquisitionChannel", "TenureMonths", "SupportCalls", "TotalSpend_USD", "ChurnStatus", "data_quality_status")
+                    VALUES (:CustomerID, :CustomerSegment, :AcquisitionChannel, :TenureMonths, :SupportCalls, :TotalSpend_USD, :ChurnStatus, :data_quality_status)
+                    ON CONFLICT ("CustomerID") DO UPDATE SET
+                        "CustomerSegment" = EXCLUDED.CustomerSegment,
+                        "AcquisitionChannel" = EXCLUDED.AcquisitionChannel,
+                        "TenureMonths" = EXCLUDED.TenureMonths,
+                        "SupportCalls" = EXCLUDED.SupportCalls,
+                        "TotalSpend_USD" = EXCLUDED.TotalSpend_USD,
+                        "ChurnStatus" = EXCLUDED.ChurnStatus,
                         "data_quality_status" = EXCLUDED.data_quality_status;
                 """)
-                row_dict = row.to_dict()
-                row_dict['_Order_ID'] = row_dict.pop('Order ID')
-                transaction_conn.execute(upsert_query, row_dict)
+                transaction_conn.execute(upsert_query, row.to_dict())
                 
     logging.info("🏆 PIPELINE RUN COMPLETION: STATUS 0 [SUCCESS]. Idempotency & Database Integrity metrics verified.\n")
     sys.exit(0)
@@ -135,6 +175,6 @@ try:
 except pa.errors.SchemaError as schema_fault:
     logging.critical(f"❌ PIPELINE STOPPED VIA PANDERA INGESTION SHIELD: {schema_fault}")
     sys.exit(1)
-except Exception as fatal_error:
-    logging.critical(f"❌ PIPELINE INGESTION CRITICAL RUNTIME FAILURE: {fatal_error}")
+except Exception as e:
+    logging.critical(f"❌ PIPELINE RUN CRITICAL FAILURE: {e}")
     sys.exit(1)

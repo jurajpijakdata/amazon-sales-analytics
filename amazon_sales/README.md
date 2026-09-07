@@ -29,7 +29,8 @@ To meet the rigorous data quality, error boundaries, and monitoring standards re
 By deploying high-precision numeric types and strict data quality boundaries, this project systematically isolates transactional anomalies to calculate true commercial performance metrics across the Amazon India network:
 
 1. **The Revenue Leakage:** Total Gross Revenue was calculated at **₹78,592,678.30**. By building strict status-filtering layers, the actual **Net Revenue (Clean)** was isolated at **₹70,403,750.00**, proving that **₹8,188,928.30 (10.4% of gross volume)** was tied up in logistics failures (cancellations and returns).
-2. **The Product Leader:** The **"Set"** product category stands as the core revenue driver, registering **50,284 successful orders** and yielding **₹35,100,949** in sanitized net revenue.
+2. **The Product Leader:** The **"Set"** product category stands as the core revenue driver, registering **42,181 successful orders** after structural data quality filtering and yielding **₹35,100,949** in sanitized net revenue.
+949** in sanitized net revenue.
 3. **Inventory Sweet Spot:** Size **"M"** systematically dominates order velocity across all main product lines, establishing the highest high-volume transaction metrics.
 4. **Commercial Peak:** Time-series sorting identifies **April 2022 (Month 04)** as the highest historical revenue spike.
 

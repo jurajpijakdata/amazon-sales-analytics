@@ -8,7 +8,7 @@ from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 
 # =====================================================================
-# ENTERPRISE LOGGING CONFIGURATION (Module 6 & 7 Standard)
+# ENTERPRISE LOGGING CONFIGURATION (Module 6, 7 & 10 Standard)
 # =====================================================================
 logging.basicConfig(
     level=logging.INFO,
@@ -83,18 +83,22 @@ try:
     # Enforce database schema constraint setups inside atomic blocks
     with engine.begin() as transaction_conn:
         if str(engine.url).startswith('sqlite'):
-            # SENIORSKÁ SAMOOPRAVA LOKÁLNEHO ENGINU: Vytvoríme tabuľku s riadnym PRIMARY KEY, ak chýba
+            # SENIORSKÁ ROBUSTNÁ SCHÉMA: Pridávame prísne CHECK doložky chrániace integritu dát priamo v DB
             transaction_conn.execute(text("DROP TABLE IF EXISTS amazon_sales_raw;"))
             transaction_conn.execute(text("""
                 CREATE TABLE amazon_sales_raw (
                     "Order ID" TEXT PRIMARY KEY,
-                    Status TEXT,
-                    Qty INTEGER,
-                    Amount REAL,
-                    data_quality_status TEXT
+                    Status TEXT NOT NULL,
+                    Qty INTEGER NOT NULL CHECK (Qty >= 0),
+                    Amount REAL CHECK (Amount >= 0 OR Amount IS NULL),
+                    data_quality_status TEXT NOT NULL
                 );
             """))
-            logging.info("🧹 Local SQLite Strategy: Schema mapped with strict Primary Key specifications.")
+            
+            # PERFORMANCE OPTIMIZATION LAYER: Nasadzujeme indexy pre rýchle analytické sčítavanie tržieb
+            transaction_conn.execute(text('CREATE INDEX IF NOT EXISTS idx_amazon_sales_status ON amazon_sales_raw (Status);'))
+            transaction_conn.execute(text('CREATE INDEX IF NOT EXISTS idx_amazon_sales_quality ON amazon_sales_raw (data_quality_status);'))
+            logging.info("🧹 Local SQLite Strategy: Schema mapped with strict Primary Key, CHECK limits & Analytical Indexes.")
 
             for _, row in validated_df.iterrows():
                 upsert_query = text("""
@@ -110,7 +114,7 @@ try:
                 row_dict['_Order_ID'] = row_dict.pop('Order ID')
                 transaction_conn.execute(upsert_query, row_dict)
         else:
-            # Ostrý cloudový PostgreSQL má už kľúče z DDL skriptov nasadené permanentne
+            # Ostrý cloudový PostgreSQL má kľúče z DDL architektúry trvalo nasadené
             for _, row in validated_df.iterrows():
                 upsert_query = text("""
                     INSERT INTO amazon_sales_raw ("Order ID", "Status", "Qty", "Amount", "data_quality_status")
@@ -125,7 +129,7 @@ try:
                 row_dict['_Order_ID'] = row_dict.pop('Order ID')
                 transaction_conn.execute(upsert_query, row_dict)
                 
-    logging.info("🏆 PIPELINE RUN COMPLETION: STATUS 0 [SUCCESS]. Idempotency matrix guarantee verified.\n")
+    logging.info("🏆 PIPELINE RUN COMPLETION: STATUS 0 [SUCCESS]. Idempotency & Database Integrity metrics verified.\n")
     sys.exit(0)
 
 except pa.errors.SchemaError as schema_fault:

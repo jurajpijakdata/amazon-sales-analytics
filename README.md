@@ -6,7 +6,7 @@ A Python and SQL data pipeline built over a real-scale Amazon India sales datase
 
 ## Dashboard preview
 
-![Amazon Sales Dashboard](dashboard_preview.gif)
+![Amazon Sales Dashboard](amazon_sales/dashboard_preview.gif)
 
 ## How it's built
 
@@ -44,18 +44,28 @@ A Python and SQL data pipeline built over a real-scale Amazon India sales datase
 
 ```text
 amazon-sales-analytics/
-└── amazon_sales/
-    ├── amazon_parser.py          # Currency parsing & Decimal conversion logic (unit tested)
-    ├── amazon_analytics.py       # Reads the CSV, cleans it, prints revenue metrics
-    ├── amazon_ingestion.py       # Loads cleaned data into Postgres (or SQLite fallback)
-    ├── test_amazon.py            # Unit tests for amazon_parser.py
-    ├── test_amazon_pipeline.py   # Integration tests: run both scripts end to end
-    ├── Amazon_sales_sample.csv   # Sample dataset for reproducible runs
-    ├── requirements.txt          # Pinned dependencies
-    └── README.md
+├── amazon_sales/
+│   ├── amazon_parser.py          # Currency parsing & Decimal conversion logic (unit tested)
+│   ├── amazon_analytics.py       # Reads the CSV, cleans it, prints revenue metrics
+│   ├── amazon_ingestion.py       # Loads cleaned data into Postgres (or SQLite fallback)
+│   ├── test_amazon.py            # Unit tests for amazon_parser.py
+│   ├── test_amazon_pipeline.py   # Integration tests: run both scripts end to end
+│   ├── Amazon_sales_sample.csv   # Sample dataset for reproducible runs
+│   ├── requirements.txt          # Pinned dependencies
+│   ├── .env.example              # Template for real database credentials
+│   └── dashboard_preview.gif
+├── .github/workflows/tests.yml   # CI: runs the test suite on every push/PR
+├── LICENSE
+└── README.md
 ```
 
 ## Quick start
+
+All commands below are run from inside the `amazon_sales/` folder.
+
+```bash
+cd amazon_sales
+```
 
 ### 1. Install dependencies
 
@@ -85,7 +95,7 @@ Loads the cleaned data into a database. With no `.env` file configured, it autom
 python amazon_ingestion.py
 ```
 
-To connect it to a real Postgres/Supabase database instead, copy `.env.example` to `.env` in this folder and fill in your real credentials.
+To connect it to a real Postgres/Supabase database instead, copy `.env.example` to `.env` (both inside `amazon_sales/`) and fill in your real credentials.
 
 ---
 *Built under the UpDataLogic Performance Framework for transparent, honest, and reproducible analytics pipelines.*

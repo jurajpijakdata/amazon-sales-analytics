@@ -1,90 +1,91 @@
-# 📊 Amazon Sales & Revenue Performance Analytics Pipeline
+# Amazon Sales & Revenue Performance Analytics Pipeline
 
-A self-directed data engineering and portfolio framework modeling high-scale transactional payloads based on global Amazon Seller Central streams. This project executes a robust Python and SQL pipeline over a large-scale e-commerce dataset containing **128,975 transactional records**, systematically uncovering **₹8.1 Million in hidden losses** due to cancellations and product returns.
+[![tests](https://github.com/jurajpijakdata/amazon-sales-analytics/actions/workflows/tests.yml/badge.svg)](https://github.com/jurajpijakdata/amazon-sales-analytics/actions/workflows/tests.yml)
 
-## 🚀 Interactive Dashboard Preview
+A Python and SQL data pipeline built over a real-scale Amazon India sales dataset (128,975 transactional records), built to surface exactly how much revenue is lost to cancellations and returns rather than just reporting gross sales.
+
+## Dashboard preview
+
 ![Amazon Sales Dashboard](dashboard_preview.gif)
 
----
+## How it's built
 
-## 🏗️ Architecture Design: Enterprise Observability & Self-Healing Layout
-To meet the rigorous data quality, error boundaries, and monitoring standards required in production-grade e-commerce infrastructure, the framework deploys a strict multi-layered verification and monitoring architecture:
-1. **Enterprise Logging Framework (`logging`):** Completely replaced legacy, unmonitored standard stdout text prints with a formal Python logging machine. Events, environment shifts, and connection faults are systematically tracked across precise execution states (`INFO`, `WARNING`, `CRITICAL`) to allow direct parsing by automated cloud orchestrators.
-2. **First-Class Rejection Metrics & Quarantine:** Malformed textual data corruptions or alphanumeric anomalies are proactively intercepted row-by-row. Instead of masking failures using silent zero conversions that skew corporate averages downstream, corrupt fields are cast to explicit `NULL` maps and actively tracked as a first-class operational quality metric.
-3. **Automated Alerting Thresholds (Fail-Fast):** Incorporates an active runtime processing limit constraint. If the e-commerce data ingestion pipeline encounters a critical row rejection rate greater than **5.0%** of the batch payload volume, the entire framework halts execution immediately and throws a hard termination state (`sys.exit(1)`) to trigger scheduler alerts.
-4. **Self-Healing Pre-Load Layer:** Coerces incoming data structure alignments (e.g., preventing schema drift by casting Order IDs to clean strings) and strips alphanumeric grouping formatting or currency markers before numeric conversion.
-5. **Decoupled Unit Testing (`pytest`):** Core transformation math and financial logic are fully decoupled into an independent logic module (`amazon_parser.py`) to eliminate environmental connection dependencies, allowing rapid parameterized testing execution.
-6. **Declarative Schema Validation (`pandera`):** Screens the fully aligned, cleaned, and healed dataframe for structural attributes, duplicate keys, and range constraints before allowing downstream relational loading.
+**Self-healing currency parsing.** Raw price strings come in with inconsistent formatting (currency symbols, mixed comma/dot grouping). `amazon_parser.py` normalizes them into high-precision `Decimal` values, isolated in its own tested module so the parsing logic never depends on a database connection.
 
----
+**Quarantine over silent failure.** Rows with unparseable amounts get `NULL` and a `data_quality_status = 'UNKNOWN'` flag instead of being defaulted to zero, which would quietly understate revenue. If more than 5% of a run's rows fail validation, the pipeline stops rather than loading a bad batch.
 
-## 🔗 Dataset Provenance & Disclosure (Clone & Run Standard)
-* **Data Source:** Publicly verified [Amazon Sale Report dataset via Kaggle](https://kaggle.com).
-* **Scale:** 128,975 raw rows capturing transactions from Amazon India.
-* **Testing Vibe:** This repository contains a lightweight **`Amazon_sales_sample.csv`** to ensure full reproducibility and execution checks for reviewers and target clients without requiring heavy local system storage or processing overhead.
+**Schema validation.** `pandera` checks structure, ranges, and required columns before anything is written downstream.
 
----
+**Idempotent loads.** The ingestion script uses `INSERT ... ON CONFLICT DO UPDATE` keyed on each row's own line-item ID (an Amazon order can span several rows when it contains multiple SKUs, so `Order ID` alone isn't a unique key -- the dataset's own row index is), so it can be re-run safely without creating duplicates.
 
-## 🎯 Engineered Financial Insights
-By deploying high-precision numeric types and strict data quality boundaries, this project systematically isolates transactional anomalies to calculate true commercial performance metrics across the Amazon India network:
+**Tested at two levels.** `test_amazon.py` covers the currency parsing logic directly. `test_amazon_pipeline.py` is an integration test that actually runs both `amazon_analytics.py` and `amazon_ingestion.py` end to end with no configuration present, the same situation a fresh clone of this repo is in. Both run automatically in CI on every push (see the badge above).
 
-1. **The Revenue Leakage:** Total Gross Revenue was calculated at **₹78,592,678.30**. By building strict status-filtering layers, the actual **Net Revenue (Clean)** was isolated at **₹70,403,750.00**, proving that **₹8,188,928.30 (10.4% of gross volume)** was tied up in logistics failures (cancellations and returns).
-2. **The Product Leader:** The **"Set"** product category stands as the core revenue driver, registering **42,181 successful orders** after structural data quality filtering and yielding **₹35,100,949** in sanitized net revenue.
-949** in sanitized net revenue.
-3. **Inventory Sweet Spot:** Size **"M"** systematically dominates order velocity across all main product lines, establishing the highest high-volume transaction metrics.
-4. **Commercial Peak:** Time-series sorting identifies **April 2022 (Month 04)** as the highest historical revenue spike.
+## Dataset
 
----
+- **Source:** [Amazon Sale Report dataset via Kaggle](https://kaggle.com).
+- **Scale:** 128,975 raw rows of Amazon India transactions.
+- **Sample included:** This repo ships a lightweight `Amazon_sales_sample.csv` so the pipeline is fully runnable end to end without needing the full dataset or a database connection.
 
-## 🛠️ Tech Stack & Pipeline Configurations
-- **Data Engineering:** Python (Pandas) executing an inline self-healing text cleanup matrix, robust `logging` stream handlers, and strict type formatting via `pandera.pandas`. High-precision accounting aggregates utilize `decimal.Decimal` logic to completely eliminate binary float drifting. Loose zero-interpolations (`.fillna(0)`) are entirely deprecated.
-- **Testing Suite:** `pytest` executing parametrized, table-driven unit tests to simulate and intercept raw input anomalies.
-- **Database Architecture:** PostgreSQL (SQLAlchemy + `psycopg2-binary`) deploying optimized bulk block write configurations (`chunksize=10000`) and secure Connection Pooler layers (Port `6543`), featuring automated local file backup routing.
-- **BI Visualization:** Power BI Desktop configured with custom localization schemas for the Indian Rupee (`₹`) financial system, optimized for flawless metric aggregations (`SUM()` and `AVERAGE()`).
+## What the numbers show
 
----
+- **Revenue leakage:** Gross revenue across the full dataset was ₹78,592,678.30. After filtering out cancellations and returns, clean net revenue was ₹70,403,750.00 -- meaning ₹8,188,928.30 (10.4% of gross volume) was tied up in logistics failures.
+- **Top category:** "Set" is the leading product category by volume, with 42,181 successful orders and ₹35,100,949 in clean net revenue.
+- **Size distribution:** Size "M" has the highest order volume across the main product lines.
+- **Seasonality:** April 2022 was the highest-revenue month in the dataset.
 
-## 📁 Repository Directory Structure
+## Tech stack
+
+- **Data engineering:** Python (pandas) with a self-healing text cleanup layer, `logging` for structured output, and `pandera` for schema validation. Monetary values use `decimal.Decimal` throughout to avoid floating-point rounding drift.
+- **Testing:** `pytest`, parametrized unit tests plus a full-pipeline integration test.
+- **Database:** PostgreSQL via SQLAlchemy + `psycopg2-binary`, with a chunked bulk-upsert load step and an automatic local SQLite fallback when no cloud database is configured.
+- **BI:** Power BI, formatted for Indian Rupee (₹) currency display.
+
+## Repository structure
 
 ```text
 amazon-sales-analytics/
 └── amazon_sales/
-    ├── Amazon_sales_sample.csv            # Custom Ingestion Sample Dataset
-    ├── amazon_parser.py                   # Pure Decoupled Parsing & Business Logic (100% Testable)
-    ├── amazon_analytics.py                # Main Core Analytics Engine & Production Logging Handlers
-    ├── amazon_ingestion.py                # Relational Storage Ingestion Stream with Logging Blueprint
-    ├── test_amazon.py                     # Parametrized Pytest Suite & Code Crash Simulator
-    ├── requirements.txt                   # Locked Software Dependency Layout Matrix
-    └── README.md                          # Enterprise Systems Documentation
+    ├── amazon_parser.py          # Currency parsing & Decimal conversion logic (unit tested)
+    ├── amazon_analytics.py       # Reads the CSV, cleans it, prints revenue metrics
+    ├── amazon_ingestion.py       # Loads cleaned data into Postgres (or SQLite fallback)
+    ├── test_amazon.py            # Unit tests for amazon_parser.py
+    ├── test_amazon_pipeline.py   # Integration tests: run both scripts end to end
+    ├── Amazon_sales_sample.csv   # Sample dataset for reproducible runs
+    ├── requirements.txt          # Pinned dependencies
+    └── README.md
 ```
 
----
+## Quick start
 
-## 🚀 Quick Start (Clone & Run Standard)
+### 1. Install dependencies
 
-### 1. Replicate Local Dependencies
-Deploy the isolated software version scheme inside your local execution environment:
-```powershell
+```bash
 pip install -r requirements.txt
 ```
 
-### 2. Execute Automated Code Testing
-Run the complete unit testing suite using the built-in crash-test vectors to verify validation stability:
-```powershell
-pytest test_amazon.py -v
+### 2. Run the test suite
+
+```bash
+pytest -v
 ```
 
-### 3. Run the Local Financial Validation Audit
-To verify the analytical layer using the pre-packaged sample data pool, execute:
-```powershell
+### 3. Run the analytics script
+
+Computes and prints the revenue metrics from the sample dataset:
+
+```bash
 python amazon_analytics.py
 ```
 
-### 4. Inspect the Ingestion Architecture Blueprint
-Test the dual-mode framework pipeline to inspect database ingestion scalability configurations:
-```powershell
+### 4. Run the ingestion pipeline
+
+Loads the cleaned data into a database. With no `.env` file configured, it automatically falls back to a local SQLite database, so this runs with zero setup:
+
+```bash
 python amazon_ingestion.py
 ```
 
+To connect it to a real Postgres/Supabase database instead, copy `.env.example` to `.env` in this folder and fill in your real credentials.
+
 ---
-*Engineered under the UpDataLogic Performance Framework for transparent, honest, and reproducible analytics pipelines.*
+*Built under the UpDataLogic Performance Framework for transparent, honest, and reproducible analytics pipelines.*

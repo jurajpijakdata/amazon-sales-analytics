@@ -8,6 +8,16 @@ from pathlib import Path
 # Import the decoupled tested business function from our clean parser module
 from amazon_parser import self_heal_amazon_amount
 
+# Force UTF-8 on stdout regardless of the calling environment's console
+# codepage. Without this, on Windows, running the script without an
+# interactive terminal attached (a subprocess, a scheduler, some CI
+# runners) falls back to a legacy encoding that can't represent the
+# emoji used in these log messages -- Python's logging module then fails
+# silently on every log call instead of crashing, so the pipeline appears
+# to run with zero visible output.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 # =====================================================================
 # ENTERPRISE LOGGING CONFIGURATION (Module 6 Standard)
 # =====================================================================
@@ -75,14 +85,15 @@ try:
     logging.info("\n=== 🎉 DATA VALIDATION & CLEANSING COMPLETED SUCCESSFULLY ===")
     clean_numeric_df = validated_df[validated_df['data_quality_status'] == 'CLEAN']
     
+    # This is Amazon India data (currency INR throughout the sample), not EUR.
     gross_revenue = sum(clean_numeric_df['Amount_Decimal_Obj'].dropna())
-    logging.info(f"Total Gross Revenue: {float(gross_revenue):,.2f} EUR")
+    logging.info(f"Total Gross Revenue: ₹{float(gross_revenue):,.2f} INR")
     
     invalid_statuses = ['Cancelled', 'Shipped - Returned to Seller', 'Returned']
     clean_cashflow_df = clean_numeric_df[~clean_numeric_df['Status'].isin(invalid_statuses)]
     
     net_revenue = sum(clean_cashflow_df['Amount_Decimal_Obj'].dropna())
-    logging.info(f"Total Net Revenue (Clean Cashflow): {float(net_revenue):,.2f} EUR")
+    logging.info(f"Total Net Revenue (Clean Cashflow): ₹{float(net_revenue):,.2f} INR")
     print("=" * 60)
     
     logging.info("🏆 PIPELINE PROCESS COMPLETION: STATUS 0 [SUCCESS]. Financial telemetry secured successfully.\n")
